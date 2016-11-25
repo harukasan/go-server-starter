@@ -433,7 +433,7 @@ func (s *Starter) Run() error {
 		}
 	}
 
-	return nil
+	// never reached
 }
 
 func getKillOldDelay() time.Duration {
@@ -562,7 +562,6 @@ func (s *Starter) StartWorker(sigCh chan os.Signal, ch chan processState) *os.Pr
 	}
 
 	// never reached
-	return nil
 }
 
 func (s *Starter) Teardown() error {
