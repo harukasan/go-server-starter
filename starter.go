@@ -354,80 +354,78 @@ func (s *Starter) Run() error {
 	}()
 
 	//	var lastRestartTime time.Time
-	for { // outer loop
-		setEnv()
+	setEnv()
 
-		// Just wait for the worker to exit, or for us to receive a signal
-		for {
-			// restart = 2: force restart
-			// restart = 1 and no workers: force restart
-			// restart = 0: no restart
-			restart := 0
+	// Just wait for the worker to exit, or for us to receive a signal
+	for {
+		// restart = 2: force restart
+		// restart = 1 and no workers: force restart
+		// restart = 0: no restart
+		restart := 0
 
-			select {
-			case st := <-workerCh:
-				// oops, the worker exited? check for its pid
-				if p.Pid == st.Pid() { // current worker
-					exitSt := grabExitStatus(st)
-					fmt.Fprintf(os.Stderr, "worker %d died unexpectedly with status %d, restarting\n", p.Pid, exitSt)
-					p = s.StartWorker(sigCh, workerCh)
-					// lastRestartTime = time.Now()
-				} else {
-					exitSt := grabExitStatus(st)
-					fmt.Fprintf(os.Stderr, "old worker %d died, status:%d\n", st.Pid(), exitSt)
-					delete(oldWorkers, st.Pid())
-				}
-			case sigReceived = <-sigCh:
-				// Temporary fix
-				switch sigReceived {
-				case syscall.SIGHUP:
-					// When we receive a HUP signal, we need to spawn a new worker
-					fmt.Fprintf(os.Stderr, "received HUP (num_old_workers=TODO)\n")
-					restart = 1
-					sigToSend = s.signalOnHUP
-				case syscall.SIGTERM:
-					sigToSend = s.signalOnTERM
-					return nil
-				default:
-					sigToSend = syscall.SIGTERM
-					return nil
-				}
-			}
-
-			if restart > 1 || restart > 0 && len(oldWorkers) == 0 {
-				fmt.Fprintf(os.Stderr, "spawning a new worker (num_old_workers=TODO)\n")
-				oldWorkers[p.Pid] = s.generation
+		select {
+		case st := <-workerCh:
+			// oops, the worker exited? check for its pid
+			if p.Pid == st.Pid() { // current worker
+				exitSt := grabExitStatus(st)
+				fmt.Fprintf(os.Stderr, "worker %d died unexpectedly with status %d, restarting\n", p.Pid, exitSt)
 				p = s.StartWorker(sigCh, workerCh)
-				fmt.Fprintf(os.Stderr, "new worker is now running, sending %s to old workers:", signame(sigToSend))
-				size := len(oldWorkers)
-				if size == 0 {
-					fmt.Fprintf(os.Stderr, "none\n")
-				} else {
-					i := 0
-					for pid := range oldWorkers {
-						i++
-						fmt.Fprintf(os.Stderr, "%d", pid)
-						if i < size {
-							fmt.Fprintf(os.Stderr, ",")
-						}
-					}
-					fmt.Fprintf(os.Stderr, "\n")
+				// lastRestartTime = time.Now()
+			} else {
+				exitSt := grabExitStatus(st)
+				fmt.Fprintf(os.Stderr, "old worker %d died, status:%d\n", st.Pid(), exitSt)
+				delete(oldWorkers, st.Pid())
+			}
+		case sigReceived = <-sigCh:
+			// Temporary fix
+			switch sigReceived {
+			case syscall.SIGHUP:
+				// When we receive a HUP signal, we need to spawn a new worker
+				fmt.Fprintf(os.Stderr, "received HUP (num_old_workers=TODO)\n")
+				restart = 1
+				sigToSend = s.signalOnHUP
+			case syscall.SIGTERM:
+				sigToSend = s.signalOnTERM
+				return nil
+			default:
+				sigToSend = syscall.SIGTERM
+				return nil
+			}
+		}
 
-					killOldDelay := getKillOldDelay()
-					fmt.Fprintf(os.Stderr, "sleep %d secs\n", int(killOldDelay/time.Second))
-					if killOldDelay > 0 {
-						time.Sleep(killOldDelay)
+		if restart > 1 || restart > 0 && len(oldWorkers) == 0 {
+			fmt.Fprintf(os.Stderr, "spawning a new worker (num_old_workers=TODO)\n")
+			oldWorkers[p.Pid] = s.generation
+			p = s.StartWorker(sigCh, workerCh)
+			fmt.Fprintf(os.Stderr, "new worker is now running, sending %s to old workers:", signame(sigToSend))
+			size := len(oldWorkers)
+			if size == 0 {
+				fmt.Fprintf(os.Stderr, "none\n")
+			} else {
+				i := 0
+				for pid := range oldWorkers {
+					i++
+					fmt.Fprintf(os.Stderr, "%d", pid)
+					if i < size {
+						fmt.Fprintf(os.Stderr, ",")
 					}
+				}
+				fmt.Fprintf(os.Stderr, "\n")
 
-					fmt.Fprintf(os.Stderr, "killing old workers\n")
+				killOldDelay := getKillOldDelay()
+				fmt.Fprintf(os.Stderr, "sleep %d secs\n", int(killOldDelay/time.Second))
+				if killOldDelay > 0 {
+					time.Sleep(killOldDelay)
+				}
 
-					for pid := range oldWorkers {
-						worker, err := os.FindProcess(pid)
-						if err != nil {
-							continue
-						}
-						worker.Signal(s.signalOnHUP)
+				fmt.Fprintf(os.Stderr, "killing old workers\n")
+
+				for pid := range oldWorkers {
+					worker, err := os.FindProcess(pid)
+					if err != nil {
+						continue
 					}
+					worker.Signal(s.signalOnHUP)
 				}
 			}
 		}
