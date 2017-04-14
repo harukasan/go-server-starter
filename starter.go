@@ -56,11 +56,11 @@ func parsePortSpec(addr string) (string, int, error) {
 	return addr, int(port), nil
 }
 
-// This keeps listening to INT,TERM,HUP, and ALRM signals,
+// This keeps listening to INT,TERM and HUP signals,
 // and queues them up into a destination channel
 func acceptSignals(ctx context.Context, dst chan os.Signal) {
 	src := make(chan os.Signal, 32) // up to 32 signals
-	signal.Notify(src, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGALRM)
+	signal.Notify(src, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	signal.Ignore(syscall.SIGPIPE)
 	defer close(dst)
 	for {
@@ -531,6 +531,7 @@ func (s *Starter) Run(ctx context.Context) error {
 		}
 
 		var restart bool
+		// handle signals
 		for loop := true; loop; {
 			select {
 			case sig := <-sigCh:
@@ -538,8 +539,6 @@ func (s *Starter) Run(ctx context.Context) error {
 				case syscall.SIGHUP:
 					notice("received HUP, spawning a new worker")
 					restart = true
-					loop = false
-				case syscall.SIGALRM:
 					loop = false
 				default:
 					cleanupWorkers(sig)
